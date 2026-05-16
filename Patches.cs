@@ -228,7 +228,26 @@ namespace LoggerSystem
 
     // ==================== AIRCRAFT EVENTS ====================
 
-    /// <summary>Log missile launches from tracked aircraft.</summary>
+    /// <summary>Log missile launches from tracked aircraft (local player calls this).</summary>
+    [HarmonyPatch(typeof(Aircraft), "CmdLaunchMissile")]
+    public static class Aircraft_CmdLaunchMissile_Patch
+    {
+        public static void Postfix(Aircraft __instance, byte stationIndex, Unit target, GlobalPosition aimpoint)
+        {
+            try
+            {
+                int id = __instance.GetInstanceID();
+                if (!Plugin.TrackedUnits.ContainsKey(id)) return;
+
+                string tName = target != null ? Plugin.GetDisplayName(target) : "NONE";
+                Plugin.WriteLog($"[Aircraft][{Plugin.GetDisplayName(__instance)}#{id}] " +
+                    $"MISSILE LAUNCHED (CMD): station={stationIndex} target={tName} aimpoint={aimpoint}");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Log missile launches from tracked aircraft (synced via RPC).</summary>
     [HarmonyPatch(typeof(Aircraft), "RpcLaunchMissile")]
     public static class Aircraft_LaunchMissile_Patch
     {
@@ -241,13 +260,31 @@ namespace LoggerSystem
 
                 string tName = target != null ? Plugin.GetDisplayName(target) : "NONE";
                 Plugin.WriteLog($"[Aircraft][{Plugin.GetDisplayName(__instance)}#{id}] " +
-                    $"MISSILE LAUNCHED: station={stationIndex} target={tName} aimpoint={aimpoint}");
+                    $"MISSILE LAUNCHED (RPC): station={stationIndex} target={tName} aimpoint={aimpoint}");
             }
             catch { }
         }
     }
 
-    /// <summary>Log countermeasure deployment.</summary>
+    /// <summary>Log countermeasure deployment (local player).</summary>
+    [HarmonyPatch(typeof(Aircraft), "CmdCountermeasures")]
+    public static class Aircraft_CmdCountermeasures_Patch
+    {
+        public static void Postfix(Aircraft __instance, bool active, byte index)
+        {
+            try
+            {
+                int id = __instance.GetInstanceID();
+                if (!Plugin.TrackedUnits.ContainsKey(id)) return;
+
+                Plugin.WriteLog($"[Aircraft][{Plugin.GetDisplayName(__instance)}#{id}] " +
+                    $"COUNTERMEASURE (CMD): index={index} active={active}");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Log countermeasure deployment (synced via RPC).</summary>
     [HarmonyPatch(typeof(Aircraft), "RpcCountermeasures")]
     public static class Aircraft_Countermeasures_Patch
     {
@@ -259,7 +296,7 @@ namespace LoggerSystem
                 if (!Plugin.TrackedUnits.ContainsKey(id)) return;
 
                 Plugin.WriteLog($"[Aircraft][{Plugin.GetDisplayName(__instance)}#{id}] " +
-                    $"COUNTERMEASURE deployed index={index}");
+                    $"COUNTERMEASURE (RPC): index={index}");
             }
             catch { }
         }
@@ -505,7 +542,49 @@ namespace LoggerSystem
                 if (!Plugin.TrackedUnits.ContainsKey(id)) return;
 
                 Plugin.WriteLog($"[{Plugin.TrackedUnits[id].Category}][{Plugin.GetDisplayName(__instance)}#{id}] " +
-                    $"WEAPON FIRE: station={index} firing={firing}");
+                    $"WEAPON FIRE STATE: station={index} firing={firing}");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Log direct weapon station fire events (more reliable for players).</summary>
+    [HarmonyPatch(typeof(WeaponStation), "Fire")]
+    public static class WeaponStation_Fire_Patch
+    {
+        public static void Postfix(WeaponStation __instance, Unit owner, Unit target)
+        {
+            try
+            {
+                if (owner == null) return;
+                int id = owner.GetInstanceID();
+                if (!Plugin.TrackedUnits.ContainsKey(id)) return;
+
+                string tName = target != null ? Plugin.GetDisplayName(target) : "NONE";
+                Plugin.WriteLog($"[{Plugin.TrackedUnits[id].Category}][{Plugin.GetDisplayName(owner)}#{id}] " +
+                    $"WEAPON FIRE: station={__instance.Number} target={tName} ammo={__instance.Ammo}/{__instance.FullAmmo}");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Log fuel consumption.</summary>
+    [HarmonyPatch(typeof(Aircraft), "UseFuel")]
+    public static class Aircraft_UseFuel_Patch
+    {
+        public static void Postfix(Aircraft __instance, float fuelDrawn, bool __result)
+        {
+            try
+            {
+                if (!__result) return; // Didn't actually consume?
+                int id = __instance.GetInstanceID();
+                if (!Plugin.TrackedUnits.ContainsKey(id)) return;
+
+                if (fuelDrawn > 0.1f) // Only log significant draws
+                {
+                    Plugin.WriteLog($"[Aircraft][{Plugin.GetDisplayName(__instance)}#{id}] " +
+                        $"FUEL USED: {fuelDrawn:F2} | Current: {__instance.fuelLevel:P1}");
+                }
             }
             catch { }
         }

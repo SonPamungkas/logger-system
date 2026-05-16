@@ -44,6 +44,9 @@ namespace LoggerSystem
 
             CacheReflection();
             LogSpawnReport();
+            
+            // Log initial inventory
+            LogInventory();
         }
 
         private void CacheReflection()
@@ -206,6 +209,11 @@ namespace LoggerSystem
                     LogShipDetails(sh);
                 else if (TrackedUnit is Building bd)
                     LogBuildingDetails(bd);
+                
+                // General "Other" info
+                Aircraft ac2 = TrackedUnit as Aircraft;
+                if (ac2 != null && ac2.playerRef.PlayerId != 0)
+                    L($"  PLAYER CONTROLLED: {ac2.playerRef.PlayerId}");
             }
             catch { }
         }
@@ -382,7 +390,13 @@ namespace LoggerSystem
                 // Aircraft-specific periodic
                 if (TrackedUnit is Aircraft ac)
                 {
-                    try { L($"FUEL: {ac.fuelLevel:P1} | G={ac.gForce:F1}"); } catch { }
+                    try 
+                    {
+                        string flareInfo = GetFlareInfo(ac);
+                        string capInfo = GetCapacitorInfo(ac);
+                        L($"FUEL: {ac.fuelLevel:P1} | G={ac.gForce:F1} | {flareInfo} | {capInfo}");
+                    } 
+                    catch { }
                 }
 
                 // Missile periodic
@@ -402,8 +416,79 @@ namespace LoggerSystem
                     }
                     catch { }
                 }
+
+                // Periodic inventory check for everyone
+                LogInventory();
             }
             catch { }
+        }
+
+        private void LogInventory()
+        {
+            try
+            {
+                if (TrackedUnit.weaponStations == null) return;
+                var list = new List<string>();
+                foreach (var ws in TrackedUnit.weaponStations)
+                {
+                    if (ws == null) continue;
+                    string name = ws.WeaponInfo != null ? ws.WeaponInfo.weaponName : "Gun";
+                    list.Add($"{name}:{ws.Ammo}/{ws.FullAmmo}");
+                }
+                if (list.Count > 0)
+                    L($"INVENTORY: {string.Join(", ", list)}");
+            }
+            catch { }
+        }
+
+        private string GetFlareInfo(Aircraft ac)
+        {
+            try
+            {
+                if (ac.countermeasureManager == null) return "CM: None";
+                var stationsField = typeof(CountermeasureManager).GetField("countermeasureStations", BindingFlags.NonPublic | BindingFlags.Instance);
+                var stations = stationsField?.GetValue(ac.countermeasureManager) as System.Collections.IList;
+                if (stations == null) return "CM: 0";
+
+                int totalFlares = 0;
+                foreach (var s in stations)
+                {
+                    var ammoField = s.GetType().GetField("ammo", BindingFlags.Public | BindingFlags.Instance);
+                    if (ammoField != null) totalFlares += (int)ammoField.GetValue(s);
+                }
+                return $"Flares: {totalFlares}";
+            }
+            catch { return "CM: Err"; }
+        }
+
+        private string GetCapacitorInfo(Aircraft ac)
+        {
+            try
+            {
+                if (ac.countermeasureManager == null) return "";
+                var stationsField = typeof(CountermeasureManager).GetField("countermeasureStations", BindingFlags.NonPublic | BindingFlags.Instance);
+                var stations = stationsField?.GetValue(ac.countermeasureManager) as System.Collections.IList;
+                if (stations == null) return "";
+
+                foreach (var s in stations)
+                {
+                    var cmField = s.GetType().GetField("countermeasures", BindingFlags.NonPublic | BindingFlags.Instance);
+                    var cms = cmField?.GetValue(s) as System.Collections.IList;
+                    if (cms == null) continue;
+
+                    foreach (var cm in cms)
+                    {
+                        if (cm is RadarJammer jammer)
+                        {
+                            var capField = typeof(RadarJammer).GetField("capacitance", BindingFlags.NonPublic | BindingFlags.Instance);
+                            float cap = (float)(capField?.GetValue(jammer) ?? 0f);
+                            return $"Capacitor: {cap:F1}";
+                        }
+                    }
+                }
+                return "";
+            }
+            catch { return ""; }
         }
 
         private void LogPartHealthChanges()

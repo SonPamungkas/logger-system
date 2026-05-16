@@ -205,14 +205,14 @@ namespace LoggerSystem
                 int id = unit.GetInstanceID();
 
                 string defName = GetDefinitionName(unit);
-                string displayName = GetDisplayName(unit);
-                string key = MakeKey(displayName, defName);
+                string configName = GetUnitConfigName(unit);
+                string key = MakeKey(configName, defName);
 
                 // If no toggle exists for this live unit, create one dynamically
                 if (!UnitToggles.ContainsKey(key))
                 {
                     string category = GetCategoryFromUnit(unit);
-                    RegisterUnitToggle(displayName, defName, category, 0);
+                    RegisterUnitToggle(configName, defName, category, 0);
                 }
 
                 bool enabled = UnitToggles.ContainsKey(key) && UnitToggles[key].Value;
@@ -223,7 +223,7 @@ namespace LoggerSystem
                     var tracker = unit.gameObject.AddComponent<UnitTracker>();
                     tracker.Init(unit, GetCategoryFromUnit(unit), key);
                     TrackedUnits[id] = tracker;
-                    WriteLog($"[TRACKER] Attached to {displayName} (ID:{id}, Cat:{GetCategoryFromUnit(unit)})");
+                    WriteLog($"[TRACKER] Attached to {GetDisplayName(unit)} (ID:{id}, Cat:{GetCategoryFromUnit(unit)})");
                 }
                 else if (!enabled && TrackedUnits.ContainsKey(id))
                 {
@@ -231,6 +231,7 @@ namespace LoggerSystem
                     RemoveTracker(id);
                 }
             }
+
 
             // Clean up dead trackers
             var deadKeys = TrackedUnits.Where(kvp => kvp.Value == null || kvp.Value.TrackedUnit == null)
@@ -266,15 +267,38 @@ namespace LoggerSystem
             return typeName;
         }
 
+        /// <summary>
+        /// Returns the name used for logging (includes player name if available).
+        /// </summary>
         public static string GetDisplayName(Unit unit)
         {
             if (unit == null) return "NULL";
             try
             {
-                if (!string.IsNullOrEmpty(unit.unitName)) return Sanitize(unit.unitName);
+                string name = "";
+                if (!string.IsNullOrEmpty(unit.unitName)) name = unit.unitName;
+                else if (unit.definition != null && !string.IsNullOrEmpty(unit.definition.unitName))
+                    name = unit.definition.unitName;
+                else name = unit.gameObject.name;
+
+                return Sanitize(name);
+            }
+            catch { return "Unknown"; }
+        }
+
+        /// <summary>
+        /// Returns the name used for config keys (always prefers definition name to avoid player-name-specific configs).
+        /// </summary>
+        public static string GetUnitConfigName(Unit unit)
+        {
+            if (unit == null) return "Unknown";
+            try
+            {
                 if (unit.definition != null && !string.IsNullOrEmpty(unit.definition.unitName))
-                    return Sanitize(unit.definition.unitName);
-                return Sanitize(unit.gameObject.name);
+                    return unit.definition.unitName;
+                if (!string.IsNullOrEmpty(unit.unitName))
+                    return unit.unitName;
+                return unit.gameObject.name;
             }
             catch { return "Unknown"; }
         }
