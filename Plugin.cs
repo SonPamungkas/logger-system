@@ -9,6 +9,7 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
+using NuclearOption;
 
 namespace LoggerSystem
 {
@@ -19,7 +20,10 @@ namespace LoggerSystem
         public static ManualLogSource Log;
         public static string LogFilePath;
 
-        // Per-unit toggles: key = sanitized unit name -> config toggle
+        // Per-unit toggles:
+        public static ConfigEntry<bool> EnableAimpointLogging;
+        
+        // Dictionary mapping unit names -> category toggles
         // Uses definition-level scanning (like Equalizer) so each unique unit type gets one toggle
         public static Dictionary<string, ConfigEntry<bool>> UnitToggles = new Dictionary<string, ConfigEntry<bool>>();
 
@@ -81,6 +85,9 @@ namespace LoggerSystem
         /// </summary>
         public void ScanDefinitions()
         {
+            // Dynamic config for specific units
+            EnableAimpointLogging = Config.Bind("Settings", "EnableAimpointLogging", true, "Log missile aimpoints periodically, staggered per second.");
+            
             // Scan all definition types
             ScanDefinitionType<AircraftDefinition>("Aircraft", 600);
             ScanDefinitionType<ShipDefinition>("Ship", 500);

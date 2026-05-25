@@ -2,6 +2,8 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using NuclearOption;
+using NuclearOption.Networking;
 
 namespace LoggerSystem
 {
@@ -62,8 +64,26 @@ namespace LoggerSystem
                 int id = __instance.GetInstanceID();
                 if (!Plugin.TrackedUnits.ContainsKey(id)) return;
 
+                string maxMetrics = Plugin.TrackedUnits[id].GetMaxMetrics();
+                
+                string killerInfo = "No Damage Credit";
+                try
+                {
+                    var dcField = typeof(Unit).GetField("damageCredit", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (dcField != null)
+                    {
+                        var dc = dcField.GetValue(__instance) as System.Collections.Generic.Dictionary<uint, float>;
+                        if (dc != null && dc.Count > 0)
+                        {
+                            var topKiller = System.Linq.Enumerable.First(System.Linq.Enumerable.OrderByDescending(dc, kvp => kvp.Value));
+                            killerInfo = $"TopKiller: PlayerID {topKiller.Key} (Dmg={topKiller.Value:F0})";
+                        }
+                    }
+                }
+                catch { }
+
                 Plugin.WriteLog($"[{Plugin.TrackedUnits[id].Category}][{Plugin.GetDisplayName(__instance)}#{id}] " +
-                    $"*** UNIT DISABLED/KILLED *** at {UnitTracker.FormatPos(__instance.transform.position)}");
+                    $"*** UNIT DISABLED/KILLED *** at {UnitTracker.FormatPos(__instance.GlobalPosition())} | {maxMetrics} | {killerInfo}");
             }
             catch { }
         }
@@ -208,23 +228,6 @@ namespace LoggerSystem
         }
     }
 
-    /// <summary>Log missile aimpoint changes.</summary>
-    [HarmonyPatch(typeof(Missile), "SetAimpoint")]
-    public static class Missile_SetAimpoint_Patch
-    {
-        public static void Postfix(Missile __instance, GlobalPosition aimPoint, Vector3 targetVel)
-        {
-            try
-            {
-                int id = __instance.GetInstanceID();
-                if (!Plugin.TrackedUnits.ContainsKey(id)) return;
-
-                Plugin.WriteLog($"[Missile][{Plugin.GetDisplayName(__instance)}#{id}] " +
-                    $"AIMPOINT: {aimPoint} targetVel={targetVel}");
-            }
-            catch { }
-        }
-    }
 
     // ==================== AIRCRAFT EVENTS ====================
 

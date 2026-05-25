@@ -4,6 +4,8 @@ using System.Reflection;
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
+using NuclearOption;
+using NuclearOption.Networking;
 
 namespace LoggerSystem
 {
@@ -27,6 +29,12 @@ namespace LoggerSystem
         private float _logInterval = 2f;
         private bool _initialized;
         private bool _spawnLogged;
+        
+        // Aimpoint / Staggering
+        private float _aimpointTimer;
+        
+        // Max metrics
+        private float _maxGForce = 0f;
 
         // Cached reflection
         private static FieldInfo _fuelLevelField;
@@ -41,6 +49,9 @@ namespace LoggerSystem
             UnitID = unit.GetInstanceID();
             UnitName = Plugin.GetDisplayName(unit);
             _initialized = true;
+            
+            // Stagger aimpoint logging offset by UnitID
+            _aimpointTimer = Time.time + (UnitID % 10) * 0.1f;
 
             CacheReflection();
             LogSpawnReport();
@@ -69,7 +80,7 @@ namespace LoggerSystem
             L($"  Category: {Category}");
             L($"  InstanceID: {UnitID}");
             L($"  GameObject: {TrackedUnit.gameObject.name}");
-            L($"  Position: {FormatPos(TrackedUnit.transform.position)}");
+            L($"  Position: {FormatPos(TrackedUnit.GlobalPosition())}");
             L($"  Rotation: {TrackedUnit.transform.eulerAngles}");
 
             // Unit base fields
@@ -358,6 +369,33 @@ namespace LoggerSystem
                 return;
             }
 
+            if (TrackedUnit is Aircraft ac)
+            {
+                if (ac.gForce > _maxGForce) _maxGForce = ac.gForce;
+            }
+
+            // Staggered Aimpoint tracking
+            if (Plugin.EnableAimpointLogging != null && Plugin.EnableAimpointLogging.Value)
+            {
+                if (TrackedUnit is Missile ms)
+                {
+                    if (Time.time - _aimpointTimer >= 1f)
+                    {
+                        _aimpointTimer = Time.time;
+                        var aimpointField = typeof(Missile).GetField("aimPoint", BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (aimpointField != null)
+                        {
+                            object apObj = aimpointField.GetValue(ms);
+                            if (apObj != null)
+                            {
+                                GlobalPosition aimpoint = (GlobalPosition)apObj;
+                                L($"AIMPOINT: {FormatPos(aimpoint)}");
+                            }
+                        }
+                    }
+                }
+            }
+
             if (Time.time - _lastLogTime < _logInterval) return;
             _lastLogTime = Time.time;
 
@@ -368,14 +406,17 @@ namespace LoggerSystem
         {
             try
             {
-                Vector3 pos = TrackedUnit.transform.position;
-                float dist = Vector3.Distance(pos, _lastPos);
+                Vector3 localPos = TrackedUnit.transform.position;
+                float dist = Vector3.Distance(localPos, _lastPos);
 
                 // Only log position if moved significantly
                 if (dist > 1f)
-                    L($"POS: {FormatPos(pos)} | Δ={dist:F1}m | Speed={TrackedUnit.speed:F1}m/s | Alt={TrackedUnit.radarAlt:F0}m");
+                {
+                    Vector3 rot = TrackedUnit.transform.eulerAngles;
+                    L($"POS: {FormatPos(TrackedUnit.GlobalPosition())} ROT:({rot.x:F1}, {rot.y:F1}, {rot.z:F1}) | Δ={dist:F1}m | Speed={TrackedUnit.speed:F1}m/s | Alt={TrackedUnit.radarAlt:F0}m");
+                }
 
-                _lastPos = pos;
+                _lastPos = localPos;
 
                 // Disabled state change
                 if (TrackedUnit.disabled != _wasDisabled)
@@ -410,7 +451,7 @@ namespace LoggerSystem
                             var targetField = typeof(Missile).GetField("target", BindingFlags.NonPublic | BindingFlags.Instance);
                             var target = targetField?.GetValue(ms) as Unit;
                             if (target != null)
-                                L($"  TARGET: {Plugin.GetDisplayName(target)} at {FormatPos(target.transform.position)}");
+                                L($"  TARGET: {Plugin.GetDisplayName(target)} at {FormatPos(target.GlobalPosition())}");
                         }
                         catch { }
                     }
@@ -520,9 +561,19 @@ namespace LoggerSystem
             Plugin.WriteLog($"[{Category}][{UnitName}#{UnitID}] {msg}");
         }
 
+        public static string FormatPos(GlobalPosition pos)
+        {
+            return $"POS:({pos.x:F1}, {pos.y:F1}, {pos.z:F1})";
+        }
+
         public static string FormatPos(Vector3 v)
         {
-            return $"({v.x:F1}, {v.y:F1}, {v.z:F1})";
+            return $"POS:({v.x:F1}, {v.y:F1}, {v.z:F1})";
+        }
+
+        public string GetMaxMetrics()
+        {
+            return $"MaxGForce: {_maxGForce:F1}G";
         }
     }
 }
