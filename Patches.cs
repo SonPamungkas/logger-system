@@ -7,8 +7,6 @@ using NuclearOption.Networking;
 
 namespace LoggerSystem
 {
-    // ==================== DAMAGE PATCHES ====================
-
     /// <summary>Intercept UnitPart.ApplyDamage to log every damage event on tracked units.</summary>
     [HarmonyPatch(typeof(UnitPart), "ApplyDamage")]
     public static class UnitPart_ApplyDamage_Patch
@@ -50,8 +48,6 @@ namespace LoggerSystem
             catch { }
         }
     }
-
-    // ==================== UNIT LIFECYCLE PATCHES ====================
 
     /// <summary>Log when any Unit is disabled (killed).</summary>
     [HarmonyPatch(typeof(Unit), "DisableUnit")]
@@ -125,8 +121,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== DAMAGE RECORDING / HIT REGISTRATION ====================
-
     /// <summary>Log when a tracked unit records damage credit (who damaged it).</summary>
     [HarmonyPatch(typeof(Unit), "RecordDamage")]
     public static class Unit_RecordDamage_Patch
@@ -177,8 +171,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== MISSILE EVENTS ====================
-
     /// <summary>Log missile target changes.</summary>
     [HarmonyPatch(typeof(Missile), "SetTarget")]
     public static class Missile_SetTarget_Patch
@@ -227,9 +219,6 @@ namespace LoggerSystem
             catch { }
         }
     }
-
-
-    // ==================== AIRCRAFT EVENTS ====================
 
     /// <summary>Log missile launches from tracked aircraft (local player calls this).</summary>
     [HarmonyPatch(typeof(Aircraft), "CmdLaunchMissile")]
@@ -359,8 +348,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== UNIT FACTION / STATE CHANGES ====================
-
     /// <summary>Log when a unit's faction HQ changes.</summary>
     [HarmonyPatch(typeof(Unit), "HQChanged")]
     public static class Unit_HQChanged_Patch
@@ -433,8 +420,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== RCS / VISIBILITY MODIFICATIONS ====================
-
     /// <summary>Log RCS modifications on tracked units.</summary>
     [HarmonyPatch(typeof(Unit), "ModifyRCS")]
     public static class Unit_ModifyRCS_Patch
@@ -471,8 +456,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== UNIT INITIALIZATION ====================
-
     /// <summary>Log unit initialization.</summary>
     [HarmonyPatch(typeof(Unit), "InitializeUnit")]
     public static class Unit_Initialize_Patch
@@ -490,8 +473,6 @@ namespace LoggerSystem
             catch { }
         }
     }
-
-    // ==================== BUILDING-SPECIFIC ====================
 
     /// <summary>Log building collapse. Parameter names must match: oldState, newState.</summary>
     [HarmonyPatch(typeof(Building), "UnitDisabled")]
@@ -511,8 +492,6 @@ namespace LoggerSystem
         }
     }
 
-    // ==================== JAMMING ====================
-
     /// <summary>Log jamming events on tracked units.</summary>
     [HarmonyPatch(typeof(Unit), "Jam")]
     public static class Unit_Jam_Patch
@@ -530,8 +509,6 @@ namespace LoggerSystem
             catch { }
         }
     }
-
-    // ==================== WEAPON FIRING ====================
 
     /// <summary>Log weapon firing state changes.</summary>
     [HarmonyPatch(typeof(Unit), "SetFiringState")]

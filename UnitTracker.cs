@@ -9,10 +9,6 @@ using NuclearOption.Networking;
 
 namespace LoggerSystem
 {
-    /// <summary>
-    /// Attached to each tracked unit. Polls and logs comprehensive state every tick interval.
-    /// Also hooks into events for damage, disable, faction change, missile registration, etc.
-    /// </summary>
     public class UnitTracker : MonoBehaviour
     {
         public Unit TrackedUnit;
@@ -35,6 +31,8 @@ namespace LoggerSystem
         
         // Max metrics
         private float _maxGForce = 0f;
+
+        private static HashSet<string> _deepDivedUnits = new HashSet<string>();
 
         // Cached reflection
         private static FieldInfo _fuelLevelField;
@@ -121,6 +119,19 @@ namespace LoggerSystem
 
             L("========== END SPAWN REPORT ==========");
             _lastPos = TrackedUnit.transform.position;
+            
+            if (Plugin.EnableEncyclopediaDeepDive != null && Plugin.EnableEncyclopediaDeepDive.Value)
+            {
+                string defName = TrackedUnit.definition?.unitName ?? TrackedUnit.gameObject.name;
+                if (!_deepDivedUnits.Contains(defName))
+                {
+                    _deepDivedUnits.Add(defName);
+                    LogDeepDive();
+                }
+                
+                L("Disabling Tracker after Deep Dive check as requested.");
+                this.enabled = false;
+            }
         }
 
         private void LogDefinition()
@@ -574,6 +585,123 @@ namespace LoggerSystem
         public string GetMaxMetrics()
         {
             return $"MaxGForce: {_maxGForce:F1}G";
+        }
+
+        private void LogDeepDive()
+        {
+            L("================= ENCYCLOPEDIA DEEP DIVE =================");
+            L($"Unit: {TrackedUnit.gameObject.name} (Instance ID: {UnitID})");
+
+            var dumpedObjects = new HashSet<object>();
+
+            // 1. Dump Unit
+            DumpObjectRecursive(TrackedUnit, "UNIT", 0, dumpedObjects);
+
+            // 2. Dump Definition
+            if (TrackedUnit.definition != null)
+            {
+                DumpObjectRecursive(TrackedUnit.definition, "DEFINITION", 0, dumpedObjects);
+            }
+
+            // 3. Dump Components
+            var components = TrackedUnit.GetComponents<Component>();
+            foreach (var comp in components)
+            {
+                if (comp == null || comp == TrackedUnit || comp is Transform) continue;
+                DumpObjectRecursive(comp, $"COMPONENT [{comp.GetType().Name}]", 0, dumpedObjects);
+            }
+
+            L("==========================================================");
+        }
+
+        private void DumpObjectRecursive(object obj, string prefix, int depth, HashSet<object> dumped)
+        {
+            if (obj == null || depth > 3) return;
+            if (obj is Transform || obj is GameObject) return; // Skip core Unity hierarchy to prevent loops
+
+            Type type = obj.GetType();
+            
+            if (type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) || type == typeof(Vector3) || type == typeof(Vector2) || type == typeof(Quaternion))
+            {
+                L($"{prefix}: {obj}");
+                return;
+            }
+
+            if (dumped.Contains(obj)) return;
+            dumped.Add(obj);
+
+            L($"{prefix} ({type.Name}):");
+
+            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var fields = type.GetFields(flags);
+            var properties = type.GetProperties(flags);
+
+            foreach (var f in fields)
+            {
+                if (f.Name.Contains("k__BackingField")) continue;
+                try
+                {
+                    object val = f.GetValue(obj);
+                    ProcessValue(val, $"{prefix}  .{f.Name}", depth + 1, dumped);
+                }
+                catch { }
+            }
+
+            foreach (var p in properties)
+            {
+                if (p.GetIndexParameters().Length > 0) continue;
+                try
+                {
+                    object val = p.GetValue(obj);
+                    ProcessValue(val, $"{prefix}  .{p.Name}", depth + 1, dumped);
+                }
+                catch { }
+            }
+        }
+
+        private void ProcessValue(object val, string label, int depth, HashSet<object> dumped)
+        {
+            if (val == null)
+            {
+                L($"{label} = null");
+                return;
+            }
+
+            Type valType = val.GetType();
+
+            if (valType.IsPrimitive || valType.IsEnum || valType == typeof(string) || valType == typeof(Vector3) || valType == typeof(Vector2) || valType == typeof(Quaternion) || valType == typeof(GlobalPosition))
+            {
+                L($"{label} = {val}");
+                return;
+            }
+
+            if (val is System.Collections.IEnumerable enumerable)
+            {
+                int count = 0;
+                foreach (var item in enumerable) count++;
+                L($"{label} = [Collection: {count} items]");
+                
+                if (depth < 3 && count > 0 && count < 50)
+                {
+                    int i = 0;
+                    foreach (var item in enumerable)
+                    {
+                        DumpObjectRecursive(item, $"{label}[{i}]", depth + 1, dumped);
+                        i++;
+                        if (i >= 20) { L($"{label}  ... (truncated)"); break; }
+                    }
+                }
+                return;
+            }
+
+            if (depth < 3)
+            {
+                DumpObjectRecursive(val, label, depth, dumped);
+            }
+            else
+            {
+                L($"{label} = {valType.Name} (Max Depth)");
+            }
         }
     }
 }

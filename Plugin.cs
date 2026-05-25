@@ -13,7 +13,7 @@ using NuclearOption;
 
 namespace LoggerSystem
 {
-    [BepInPlugin("com.logger.system", "Logger System", "1.0.0")]
+    [BepInPlugin("com.logger.system", "Logger System", "1.2.5")]
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance;
@@ -22,9 +22,9 @@ namespace LoggerSystem
 
         // Per-unit toggles:
         public static ConfigEntry<bool> EnableAimpointLogging;
+        public static ConfigEntry<bool> EnableEncyclopediaDeepDive;
         
         // Dictionary mapping unit names -> category toggles
-        // Uses definition-level scanning (like Equalizer) so each unique unit type gets one toggle
         public static Dictionary<string, ConfigEntry<bool>> UnitToggles = new Dictionary<string, ConfigEntry<bool>>();
 
         // Active tracked units: instanceID -> tracker component
@@ -55,10 +55,6 @@ namespace LoggerSystem
             StartCoroutine(ScanRoutine());
         }
 
-        /// <summary>
-        /// Periodic scanner: first scans definitions (prefabs) to build config toggles,
-        /// then scans live scene units to attach/detach trackers based on toggle state.
-        /// </summary>
         private IEnumerator ScanRoutine()
         {
             // Wait for game to load definitions
@@ -79,16 +75,24 @@ namespace LoggerSystem
             }
         }
 
-        /// <summary>
-        /// Scans all UnitDefinition assets (like Equalizer's Resources.FindObjectsOfTypeAll pattern)
-        /// and creates per-unit-type config toggles grouped by category.
-        /// </summary>
         public void ScanDefinitions()
         {
             // Dynamic config for specific units
-            EnableAimpointLogging = Config.Bind("Settings", "EnableAimpointLogging", true, "Log missile aimpoints periodically, staggered per second.");
-            
-            // Scan all definition types
+            EnableAimpointLogging = Config.Bind(
+                "General",
+                "EnableAimpointLogging",
+                true,
+                "If true, missiles will stagger-log their aimpoints once per second."
+            );
+
+            EnableEncyclopediaDeepDive = Config.Bind(
+                "General",
+                "EnableEncyclopediaDeepDive",
+                false,
+                "If true, ANY spawned unit will dump EVERY single parameter and variable via reflection. WARNING: Extreme log spam. Use only when viewing units in the Encyclopedia."
+            );
+
+            // Hook scene load to capture definition objects earlypes
             ScanDefinitionType<AircraftDefinition>("Aircraft", 600);
             ScanDefinitionType<ShipDefinition>("Ship", 500);
             ScanDefinitionType<MissileDefinition>("Missile", 300);
@@ -185,10 +189,6 @@ namespace LoggerSystem
             return $"{Sanitize(displayName)}|{internalName}".ToLowerInvariant();
         }
 
-        /// <summary>
-        /// Scans all live Unit instances in the scene. Attaches trackers to enabled ones,
-        /// removes trackers from disabled ones.
-        /// </summary>
         public void ScanLiveUnits()
         {
             if (!_definitionScanDone)
@@ -274,9 +274,6 @@ namespace LoggerSystem
             return typeName;
         }
 
-        /// <summary>
-        /// Returns the name used for logging (includes player name if available).
-        /// </summary>
         public static string GetDisplayName(Unit unit)
         {
             if (unit == null) return "NULL";
@@ -293,9 +290,6 @@ namespace LoggerSystem
             catch { return "Unknown"; }
         }
 
-        /// <summary>
-        /// Returns the name used for config keys (always prefers definition name to avoid player-name-specific configs).
-        /// </summary>
         public static string GetUnitConfigName(Unit unit)
         {
             if (unit == null) return "Unknown";
@@ -349,10 +343,6 @@ namespace LoggerSystem
             Log?.LogInfo(line);
         }
 
-        /// <summary>
-        /// Check if a given live unit is currently being logged.
-        /// Used by patches to quickly filter events.
-        /// </summary>
         public static bool IsTracked(Unit unit)
         {
             if (unit == null) return false;
